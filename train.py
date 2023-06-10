@@ -6,11 +6,7 @@ from argparse import ArgumentParser
 from rich import print
 from rich import traceback
 from pytorch_lightning.loggers import TensorBoardLogger
-from torch.nn.parallel import DistributedDataParallel as DDP
-from pytorch_lightning.strategies import ddp
-
 traceback.install()
-
 
 def parse_args() -> dict:
     parser = ArgumentParser()
@@ -58,7 +54,7 @@ def parse_args() -> dict:
         pass
     elif config["model"] == "SWave":
         from model import SWaveNet
-        config["model"] = SWaveNet(n_src=config["n_src"])
+        config["model"] = SWaveNet()
     else:
         pass
 

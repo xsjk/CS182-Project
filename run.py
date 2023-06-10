@@ -1,28 +1,10 @@
 import torch
-import pytorch_lightning as pl
 import soundfile as sf
 import os
 import argparse
-from rich import print
 from rich import traceback
 from trainer import System
-
 traceback.install()
-
-
-# # 'from_pretrained' automatically uses the right model class (asteroid.models.DPRNNTasNet).
-# model = BaseModel.from_pretrained("mpariente/DPRNNTasNet-ks2_WHAM_sepclean")
-
-# # You can pass a NumPy array:
-# mixture, _ = sf.read("female-female-mixture.wav", dtype="float32", always_2d=True)
-# # Soundfile returns the mixture as shape (time, channels), and Asteroid expects (batch, channels, time)
-# mixture = mixture.transpose()
-# mixture = mixture.reshape(1, mixture.shape[0], mixture.shape[1])
-# out_wavs = model.separate(mixture)
-
-# # Or simply a file name:
-# model.separate("female-female-mixture.wav")
-
 
 def parse_args() -> dict:
     parser = argparse.ArgumentParser()
@@ -31,8 +13,8 @@ def parse_args() -> dict:
         action="store",
         type=str,
         required=True,
-        choices=["DPRNN", "ConvTas"],
-        help="The model to use, default is DPRNN.",
+        choices=["DPRNN", "ConvTas", "SWave"],
+        help="The model to use.",
     )
     parser.add_argument(
         "--input",
@@ -53,20 +35,21 @@ def parse_args() -> dict:
     if config["model"] == "DPRNN":
         filename = "DPRNNTasNet.ckpt"
         from model import DPRNNTasNet
-
         config["model"] = DPRNNTasNet(2)
     elif config["model"] == "ConvTas":
         filename = "ConvTasNet.ckpt"
         from model import ConvTasNet
-
         config["model"] = ConvTasNet(2)
     elif config["model"] == "SWave":
         filename = "SWaveNet.ckpt"
         from model import SWaveNet
-
         config["model"] = SWaveNet(2)
     else:
         raise RuntimeError("Unknow model")
+    
+    if not os.path.exists(filename):
+        raise RuntimeError("You have to train the model first")
+    
     checkpoint = torch.load(filename)
     config["system"] = System(config["model"], None, None)
     config["system"].load_state_dict(checkpoint["state_dict"])
@@ -80,7 +63,6 @@ def parse_args() -> dict:
     if config["output"] == None:
         config["output"] = os.path.abspath(os.path.dirname(config["input"]))
 
-    # print(config)
     return config
 
 

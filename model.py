@@ -103,7 +103,7 @@ class DPRNNBlock(nn.Module):
         self.inter_norm = norms.gLN(in_chan)
 
     def forward(self, x):
-        """Input shape : [batch, feats, chunk_size, num_chunks]"""
+        """[batch, feats, chunk_size, num_chunks]"""
         B, N, K, L = x.size()
         output = x  # for skip connection
         # Intra-chunk processing
@@ -218,22 +218,7 @@ class DPRNNTasNet(BaseEncoderMaskerDecoder):
         encoder, decoder = make_enc_dec(
             "free", kernel_size=16, n_filters=64, stride=8, sample_rate=sample_rate
         )
-        super().__init__(
-            encoder,
-            DPRNN(
-                encoder.n_feats_out,
-                n_src,
-                out_chan=None,
-                bn_chan=128,
-                hid_size=128,
-                chunk_size=100,
-                hop_size=None,
-                n_repeats=6,
-                num_layers=1,
-                dropout=0,
-            ),
-            decoder,
-        )
+        super().__init__(encoder, DPRNN(encoder.n_feats_out, n_src, out_chan=None, bn_chan=128, hid_size=128, chunk_size=100, hop_size=None, n_repeats=6, num_layers=1, dropout=0), decoder,)
 
 
 ##################################################################################################################################
@@ -263,7 +248,7 @@ class Conv1DBlock(nn.Module):
             self.skip_conv = nn.Conv1d(hid_chan, skip_chan, 1)
 
     def forward(self, x):
-        r"""Input shape $(batch, feats, seq)$."""
+        """[batch, feats, seq]"""
         shared_out = self.shared_block(x)
         res_out = self.res_conv(shared_out)
         if not self.skip_chan:
@@ -344,7 +329,7 @@ class ConvTasNet(BaseEncoderMaskerDecoder):
         encoder, decoder = make_enc_dec(
             "free", kernel_size=16, n_filters=512, stride=8, sample_rate=8000
         )
-        masker = TDConvNet(
+        super().__init__(encoder, TDConvNet(
             encoder.n_feats_out,
             n_src,
             out_chan=out_chan,
@@ -354,8 +339,7 @@ class ConvTasNet(BaseEncoderMaskerDecoder):
             hid_chan=512,
             skip_chan=128,
             conv_kernel_size=3,
-        )
-        super().__init__(encoder, masker, decoder)
+        ), decoder)
 
 
 #############################################################################################
@@ -593,9 +577,6 @@ class Separator(nn.Module):
             input_normalize=input_normalize,
         )
 
-    # ======================================= #
-    # The following code block was borrowed and modified from https://github.com/yluo42/TAC
-    # ================ BEGIN ================ #
     def pad_segment(self, input, segment_size):
         # input is the features: (B, N, T)
         batch_size, dim, seq_len = input.shape
@@ -760,84 +741,8 @@ class Decoder(nn.Module):
         est_source = overlap_and_add(est_source, self.L // 2)
         return est_source
 
-
-
-
-from pathlib import Path
-import torchaudio
-import tqdm
-import os
-
-
-
-# If used, this should be saved somewhere as it takes quite a bit
-# of time to generate
-def find_audio_files(path, exts=[".wav"], progress=True):
-    audio_files = []
-    for root, folders, files in os.walk(path, followlinks=True):
-        for file in files:
-            file = Path(root) / file
-            if file.suffix.lower() in exts:
-                audio_files.append(str(os.path.abspath(file)))
-    meta = []
-    if progress:
-        audio_files = tqdm.tqdm(audio_files,  ncols=80)
-    for file in audio_files:
-        siginfo, _ = torchaudio.info(file)
-        length = siginfo.length // siginfo.channels
-        meta.append((file, length))
-    meta.sort()
-    return meta
-
-
-
-class Audioset:
-    def __init__(self, files, length=None, stride=None, pad=True, augment=None):
-        """
-        files should be a list [(file, length)]
-        """
-        self.files = files
-        self.num_examples = []
-        self.length = length
-        self.stride = stride or length
-        self.augment = augment
-        for file, file_length in self.files:
-            if length is None:
-                examples = 1
-            elif file_length < length:
-                examples = 1 if pad else 0
-            elif pad:
-                examples = int(
-                    math.ceil((file_length - self.length) / self.stride) + 1)
-            else:
-                examples = (file_length - self.length) // self.stride + 1
-            self.num_examples.append(examples)
-
-    def __len__(self):
-        return sum(self.num_examples)
-
-    def __getitem__(self, index):
-        for (file, _), examples in zip(self.files, self.num_examples):
-            if index >= examples:
-                index -= examples
-                continue
-            num_frames = 0
-            offset = 0
-            if self.length is not None:
-                offset = self.stride * index
-                num_frames = self.length
-            #  out = th.Tensor(sf.read(str(file), start=offset, frames=num_frames)[0]).unsqueeze(0)
-            out = torchaudio.load(str(file))[0]
-            if self.augment:
-                out = self.augment(out.squeeze(0).numpy()).unsqueeze(0)
-            if num_frames:
-                out = F.pad(out, (0, num_frames - out.shape[-1]))
-            return out[0]
-
-
-
 class SWaveNet(BaseModel):
-    def __init__(self, n_src):
+    def __init__(self):
         super().__init__(sample_rate = 0)
         self.masker = SWave(N=128, L=8, H=128, R=6, C=2, sr=8000, segment=4, input_normalize=False)
 
@@ -857,10 +762,5 @@ class SWaveNet(BaseModel):
     
 
     def forward(self, wav):
-        # Remember shape to shape reconstruction, cast to Tensor for torchscript
-        y = self.masker(wav).squeeze(0)
-        return y
-    
-
-
+        return self.masker(wav).squeeze(0)
     

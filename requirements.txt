@@ -1,0 +1,6 @@
+soundfile
+librosa
+pytorch
+pytorch_lightning
+asteroid
+asteroid_filterbanks
